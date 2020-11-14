@@ -21,7 +21,7 @@ from calibre.ebooks.metadata import MetaInformation
 from calibre.utils.config import (make_config_dir, Config, ConfigProxy,
                                  plugin_dir, OptionParser)
 from calibre.ebooks.metadata.sources.base import Source
-from calibre.constants import DEBUG, numeric_version
+from calibre.constants import DEBUG, numeric_version, site_plugins_loc
 from polyglot.builtins import iteritems, itervalues, unicode_type
 
 builtin_names = frozenset(p.name for p in builtin_plugins)
@@ -676,6 +676,21 @@ def has_external_plugins():
     return bool(config['plugins'])
 
 
+def _list_site_plugins():
+    if not site_plugins_loc:
+        return []
+
+    try:
+        plugin_file_names = os.listdir(site_plugins_loc)
+    except FileNotFoundError:
+        return []
+
+    for plugin_file_name in plugin_file_names:
+        plugin_path = os.path.join(site_plugins_loc, plugin_file_name)
+        if os.path.isfile(plugin_path) and plugin_file_name.endswith('.zip'):
+            yield (os.path.splitext(plugin_file_name)[0], plugin_path)
+
+
 def initialize_plugins(perf=False):
     global _initialized_plugins
     _initialized_plugins = []
@@ -691,14 +706,15 @@ def initialize_plugins(perf=False):
         from collections import defaultdict
         import time
         times = defaultdict(lambda:0)
-    for zfp in list(external_plugins) + builtin_plugins:
+
+    for zfp in list(external_plugins.items()) + list(_list_site_plugins()) + builtin_plugins:
         try:
             if not isinstance(zfp, type):
                 # We have a plugin name
-                pname = zfp
-                zfp = os.path.join(plugin_dir, zfp+'.zip')
+                pname, path = zfp
+                zfp = os.path.join(plugin_dir, pname+'.zip')
                 if not os.path.exists(zfp):
-                    zfp = external_plugins[pname]
+                    zfp = path
             try:
                 plugin = load_plugin(zfp) if not isinstance(zfp, type) else zfp
             except PluginNotFound:
